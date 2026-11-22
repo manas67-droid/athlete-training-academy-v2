@@ -35,9 +35,37 @@ const requireAuth = (uid) => {
     }
     return uid;
 };
+// In-memory sliding-window rate limiter per UID
+const rateLimitMap = new Map();
+const checkRateLimit = (uid, action, maxRequests, windowSeconds) => {
+    const key = `${uid}:${action}`;
+    const now = Date.now();
+    const windowMs = windowSeconds * 1000;
+    const timestamps = (rateLimitMap.get(key) || []).filter((ts) => now - ts < windowMs);
+    if (timestamps.length >= maxRequests) {
+        const oldest = timestamps[0];
+        const retryAfter = Math.ceil((windowMs - (now - oldest)) / 1000);
+        firebase_functions_1.logger.warn('Rate limit exceeded', { uid, action, retryAfter });
+        throw new https_1.HttpsError('resource-exhausted', `Rate limit exceeded for ${action}. Please retry after ${retryAfter} seconds.`);
+    }
+    timestamps.push(now);
+    rateLimitMap.set(key, timestamps);
+    // Keep map lean by purging stale entries if it grows
+    if (rateLimitMap.size > 2000) {
+        for (const [k, v] of rateLimitMap.entries()) {
+            if (v.length === 0 || now - v[v.length - 1] > 300000) {
+                rateLimitMap.delete(k);
+            }
+        }
+    }
+};
 exports.submitQuizArena = (0, https_1.onCall)({ region: REGION }, async (request) => {
     const uid = requireAuth(request.auth?.uid);
+    checkRateLimit(uid, 'submitQuizArena', 6, 60); // Max 6 submissions/min
     const answers = request.data?.answers;
+    const submissionId = typeof request.data?.submissionId === 'string' && request.data.submissionId.trim()
+        ? request.data.submissionId.trim()
+        : null;
     if (!Array.isArray(answers) || answers.length !== Object.keys(quizAnswers).length) {
         throw new https_1.HttpsError('invalid-argument', 'Submit one answer for every quiz question.');
     }
@@ -67,6 +95,18 @@ exports.submitQuizArena = (0, https_1.onCall)({ region: REGION }, async (request
             throw new https_1.HttpsError('failed-precondition', 'Create your athlete profile first.');
         }
         const data = user.data() ?? {};
+        // Idempotency check: prevent duplicate reward if submissionId was already processed
+        if (submissionId && Array.isArray(data.processedSubmissions) && data.processedSubmissions.includes(submissionId)) {
+            firebase_functions_1.logger.info('Duplicate quiz submission detected; idempotency maintained', { uid, submissionId });
+            return {
+                score,
+                percentage,
+                xpEarned: 0,
+                level: getLevel(Number(data.xp ?? 0)),
+                totalXP: Number(data.xp ?? 0),
+                duplicate: true,
+            };
+        }
         const xp = Number(data.xp ?? 0) + xpEarned;
         const monthlyXP = { ...(data.monthlyXP ?? {}) };
         const weekKey = getWeekKey();
@@ -87,7 +127,7 @@ exports.submitQuizArena = (0, https_1.onCall)({ region: REGION }, async (request
             xp100: Boolean(existingAchievements.xp100) || xp >= 100,
             streak7: Boolean(existingAchievements.streak7) || Number(data.streak ?? 0) >= 7,
         };
-        transaction.update(userRef, {
+        const updatePayload = {
             xp,
             level: getLevel(xp),
             monthlyXP,
@@ -98,20 +138,25 @@ exports.submitQuizArena = (0, https_1.onCall)({ region: REGION }, async (request
             },
             quizArenaScores: firestore_1.FieldValue.arrayUnion(percentage),
             recentActivity: [activity, ...(Array.isArray(data.recentActivity) ? data.recentActivity : [])].slice(0, 5),
-        });
+        };
+        if (submissionId) {
+            updatePayload.processedSubmissions = firestore_1.FieldValue.arrayUnion(submissionId);
+        }
+        transaction.update(userRef, updatePayload);
         transaction.set(auditRef, {
             userId: uid,
             action: 'QUIZ_COMPLETED',
             timestamp: firestore_1.FieldValue.serverTimestamp(),
-            metadata: { score, totalQuestions, xpEarned },
+            metadata: { score, totalQuestions, xpEarned, submissionId },
         });
-        return { score, percentage, xpEarned, level: getLevel(xp), totalXP: xp };
+        return { score, percentage, xpEarned, level: getLevel(xp), totalXP: xp, duplicate: false };
     });
-    firebase_functions_1.logger.info('Quiz Arena submitted', { uid, score, xpEarned });
+    firebase_functions_1.logger.info('Quiz Arena submitted', { uid, score, xpEarned, submissionId });
     return result;
 });
 exports.lookupMedicine = (0, https_1.onCall)({ region: REGION }, async (request) => {
-    requireAuth(request.auth?.uid);
+    const uid = requireAuth(request.auth?.uid);
+    checkRateLimit(uid, 'lookupMedicine', 30, 60); // Max 30 lookups/min
     const rawText = request.data?.rawText;
     if (typeof rawText !== 'string' || rawText.trim().length < 2 || rawText.length > 500) {
         throw new https_1.HttpsError('invalid-argument', 'Provide readable medicine-label text.');
@@ -143,6 +188,7 @@ exports.lookupMedicine = (0, https_1.onCall)({ region: REGION }, async (request)
 });
 exports.setUserRole = (0, https_1.onCall)({ region: REGION }, async (request) => {
     const callerUid = requireAuth(request.auth?.uid);
+    checkRateLimit(callerUid, 'setUserRole', 10, 60);
     if (request.auth?.token.role !== 'ADMIN') {
         throw new https_1.HttpsError('permission-denied', 'Administrator access is required.');
     }
@@ -161,17 +207,18 @@ exports.setUserRole = (0, https_1.onCall)({ region: REGION }, async (request) =>
     return { uid, role };
 });
 exports.askAICoach = (0, https_1.onCall)({ region: REGION }, async (request) => {
-    requireAuth(request.auth?.uid);
-    const question = request.data?.question;
+    const uid = requireAuth(request.auth?.uid);
+    checkRateLimit(uid, 'askAICoach', 15, 60); // Max 15 AI questions/min
+    const rawQuestion = request.data?.question || request.data?.message;
     const language = request.data?.language === 'hi' ? 'hi' : 'en';
-    if (typeof question !== 'string' || !question.trim()) {
+    if (typeof rawQuestion !== 'string' || !rawQuestion.trim()) {
         throw new https_1.HttpsError('invalid-argument', 'Please provide a valid question.');
     }
-    const clean = question.trim().toLowerCase();
+    const clean = rawQuestion.trim().toLowerCase();
     const isHindi = language === 'hi';
     // Grounded anti-doping responses
     let answer = '';
-    let citations = ['WADA World Anti-Doping Code', 'WADA 2026 Prohibited List'];
+    const citations = ['WADA World Anti-Doping Code', 'WADA 2026 Prohibited List'];
     if (clean.includes('tue') || clean.includes('exemption') || clean.includes('उपचार संबंधी')) {
         answer = isHindi
             ? 'टीयूई (चिकित्सीय उपयोग छूट) एक आधिकारिक अनुमति है जो एथलीट को वैध चिकित्सा कारणों से प्रतिबंधित पदार्थ या विधि का उपयोग करने की अनुमति देती है। इसे हमेशा प्रतियोगिता से पहले अपने राष्ट्रीय डोपिंग रोधी संगठन (NADO) से स्वीकृत कराना आवश्यक है।'
@@ -192,15 +239,25 @@ exports.askAICoach = (0, https_1.onCall)({ region: REGION }, async (request) => 
     }
     else {
         answer = isHindi
-            ? `डोपिंग-रोधी नियम आपके स्वास्थ्य और खेल की निष्पक्षता की रक्षा के लिए बनाए गए हैं। हमेशा किसी भी दवा या पूरक आहार का उपयोग करने से पहले ग्लोबल डीआरओ (Global DRO) या अपने खेल चिकित्सक से पुष्टि करें।`
-            : `Clean sport protects your health and fairness in athletic competition. Always verify your medications and active ingredients with Global DRO or your team physician before consumption.`;
+            ? 'डोपिंग-रोधी नियम आपके स्वास्थ्य और खेल की निष्पक्षता की रक्षा के लिए बनाए गए हैं। हमेशा किसी भी दवा या पूरक आहार का उपयोग करने से पहले ग्लोबल डीआरओ (Global DRO) या अपने खेल चिकित्सक से पुष्टि करें।'
+            : 'Clean sport protects your health and fairness in athletic competition. Always verify your medications and active ingredients with Global DRO or your team physician before consumption.';
     }
+    const safetyNotice = isHindi
+        ? 'चेतावनी: यह एक शैक्षणिक सलाह है। चिकित्सीय या कानूनी निर्णयों के लिए हमेशा अपने खेल डॉक्टर या नाडा/वाडा से संपर्क करें।'
+        : 'NOTICE: This response is for educational guidance only and does not replace medical or official anti-doping verification.';
+    const timestamp = new Date().toISOString();
+    // Return both answer/reply and citations/sourceReferences for total contract alignment
     return {
         answer,
+        reply: answer,
         citations,
-        safetyNotice: isHindi
-            ? 'चेतावनी: यह एक शैक्षणिक सलाह है। चिकित्सीय या कानूनी निर्णयों के लिए हमेशा अपने खेल डॉक्टर या नाडा/वाडा से संपर्क करें।'
-            : 'NOTICE: This response is for educational guidance only and does not replace medical or official anti-doping verification.',
-        timestamp: new Date().toISOString(),
+        sourceReferences: citations,
+        safetyNotice,
+        timestamp,
+        suggestedFollowUps: isHindi
+            ? ['TUE क्या है और इसके नियम क्या हैं?', 'सप्लीमेंट्स क्यों जोखिम भरे होते हैं?']
+            : ['What is a Therapeutic Use Exemption (TUE)?', 'Why are dietary supplements high risk?'],
+        relevantModuleSlug: clean.includes('tue') ? 'tue' : clean.includes('supplement') ? 'supplements' : 'anti-doping-basics',
+        language,
     };
 });

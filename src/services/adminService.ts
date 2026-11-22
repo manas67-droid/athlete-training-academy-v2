@@ -2,7 +2,6 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -24,74 +23,24 @@ import type {
   AdminCurriculumModule,
   AdminDashboardMetrics,
   AdminMedicineRecord,
-  AdminQuizQuestion,
   AdminSystemSettings,
   AdminUser,
 } from '../types/admin';
 import type { CoachAssignment, UserRole } from '../types/roles';
 import type { UserProfile } from '../types/userProfile';
 
-// Default fallback seed users for clean initial rendering if Firestore is fresh
-const SEED_ADMIN_USERS: AdminUser[] = [
-  {
-    uid: 'athlete-seed-1',
-    name: 'Aarav Sharma',
-    email: 'aarav.sharma@athletics.org',
-    role: 'ATHLETE',
-    sport: 'Athletics (Track 400m)',
-    status: 'ACTIVE',
-    xp: 280,
-    level: 'Competitor',
-    streak: 5,
-    createdAt: '2026-01-10T10:00:00.000Z',
-    lastLoginDate: new Date(Date.now() - 3600000 * 3).toISOString(),
-    assignedCoachName: 'Coach Rajesh Kumar',
-    completedModulesCount: 7,
-  },
-  {
-    uid: 'athlete-seed-2',
-    name: 'Priya Patel',
-    email: 'priya.patel@swimming.in',
-    role: 'ATHLETE',
-    sport: 'Swimming (Freestyle)',
-    status: 'ACTIVE',
-    xp: 420,
-    level: 'Champion',
-    streak: 8,
-    createdAt: '2026-01-12T11:00:00.000Z',
-    lastLoginDate: new Date(Date.now() - 3600000 * 1).toISOString(),
-    assignedCoachName: 'Coach Rajesh Kumar',
-    completedModulesCount: 12,
-  },
-  {
-    uid: 'athlete-seed-3',
-    name: 'Rohan Verma',
-    email: 'rohan.verma@boxing.in',
-    role: 'ATHLETE',
-    sport: 'Boxing (Middleweight)',
-    status: 'PENDING',
-    xp: 90,
-    level: 'Rookie',
-    streak: 1,
-    createdAt: '2026-02-01T09:00:00.000Z',
-    lastLoginDate: new Date(Date.now() - 3600000 * 48).toISOString(),
-    completedModulesCount: 2,
-  },
-  {
-    uid: 'coach-primary',
-    name: 'Coach Rajesh Kumar',
-    email: 'rajesh.kumar@coach.athletics.in',
-    role: 'COACH',
-    sport: 'Track & Field / Swimming',
-    status: 'ACTIVE',
-    xp: 950,
-    level: 'Master Coach',
-    streak: 15,
-    createdAt: '2025-12-01T08:00:00.000Z',
-    lastLoginDate: new Date(Date.now() - 3600000 * 2).toISOString(),
-    completedModulesCount: 16,
-  },
-];
+// Zero-fallback empty metrics for clean initial rendering
+const INITIAL_EMPTY_METRICS: AdminDashboardMetrics = {
+  totalUsers: 0,
+  totalAthletes: 0,
+  totalCoaches: 0,
+  activeUsersThisWeek: 0,
+  totalModules: learningModules.length,
+  totalQuestions: QUIZ_ARENA_QUESTIONS.length + 45,
+  totalMedicines: TRUSTED_MEDICINE_DATABASE.length,
+  recentAuditEventsCount: 0,
+  pendingActionsCount: 0,
+};
 
 /**
  * Record an immutable administrative action to the audit log.
@@ -136,29 +85,22 @@ export const subscribeToAdminMetrics = (
     return onSnapshot(
       q,
       (snapshot) => {
-        let totalUsers = snapshot.size;
+        const totalUsers = snapshot.size;
         let totalAthletes = 0;
         let totalCoaches = 0;
         let activeUsersThisWeek = 0;
 
-        if (totalUsers === 0) {
-          totalUsers = SEED_ADMIN_USERS.length;
-          totalAthletes = SEED_ADMIN_USERS.filter((u) => u.role === 'ATHLETE').length;
-          totalCoaches = SEED_ADMIN_USERS.filter((u) => u.role === 'COACH').length;
-          activeUsersThisWeek = SEED_ADMIN_USERS.filter((u) => u.streak > 0).length;
-        } else {
-          snapshot.forEach((docSnap) => {
-            const data = docSnap.data() as UserProfile;
-            if (data.role === 'COACH') {
-              totalCoaches += 1;
-            } else {
-              totalAthletes += 1;
-            }
-            if ((data.streak || 0) > 0) {
-              activeUsersThisWeek += 1;
-            }
-          });
-        }
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as UserProfile;
+          if (data.role === 'COACH') {
+            totalCoaches += 1;
+          } else {
+            totalAthletes += 1;
+          }
+          if ((data.streak || 0) > 0) {
+            activeUsersThisWeek += 1;
+          }
+        });
 
         const metrics: AdminDashboardMetrics = {
           totalUsers,
@@ -168,40 +110,19 @@ export const subscribeToAdminMetrics = (
           totalModules: learningModules.length,
           totalQuestions: QUIZ_ARENA_QUESTIONS.length + 45,
           totalMedicines: TRUSTED_MEDICINE_DATABASE.length,
-          recentAuditEventsCount: 14,
-          pendingActionsCount: 2,
+          recentAuditEventsCount: 0,
+          pendingActionsCount: 0,
         };
 
         callback(metrics);
       },
       (error) => {
-        console.warn('Real-time admin metrics snapshot failed, returning fallback metrics:', error);
-        callback({
-          totalUsers: SEED_ADMIN_USERS.length,
-          totalAthletes: 3,
-          totalCoaches: 1,
-          activeUsersThisWeek: 3,
-          totalModules: learningModules.length,
-          totalQuestions: QUIZ_ARENA_QUESTIONS.length + 45,
-          totalMedicines: TRUSTED_MEDICINE_DATABASE.length,
-          recentAuditEventsCount: 5,
-          pendingActionsCount: 1,
-        });
+        console.warn('Real-time admin metrics snapshot failed:', error);
+        callback(INITIAL_EMPTY_METRICS);
       }
     );
   } catch {
-    // If listener initialization fails, return static unsubscribe
-    callback({
-      totalUsers: SEED_ADMIN_USERS.length,
-      totalAthletes: 3,
-      totalCoaches: 1,
-      activeUsersThisWeek: 3,
-      totalModules: learningModules.length,
-      totalQuestions: 50,
-      totalMedicines: TRUSTED_MEDICINE_DATABASE.length,
-      recentAuditEventsCount: 0,
-      pendingActionsCount: 0,
-    });
+    callback(INITIAL_EMPTY_METRICS);
     return () => {};
   }
 };
@@ -225,11 +146,7 @@ export const subscribeToAdminUsers = (
       q,
       (snapshot) => {
         if (snapshot.empty) {
-          const filtered =
-            roleFilter === 'ALL'
-              ? SEED_ADMIN_USERS
-              : SEED_ADMIN_USERS.filter((u) => u.role === roleFilter);
-          callback(filtered);
+          callback([]);
           return;
         }
 
@@ -260,16 +177,12 @@ export const subscribeToAdminUsers = (
         callback(users);
       },
       (error) => {
-        console.warn('Real-time users listener failed, falling back to seed roster:', error);
-        const filtered =
-          roleFilter === 'ALL'
-            ? SEED_ADMIN_USERS
-            : SEED_ADMIN_USERS.filter((u) => u.role === roleFilter);
-        callback(filtered);
+        console.warn('Real-time users listener failed:', error);
+        callback([]);
       }
     );
   } catch {
-    callback(SEED_ADMIN_USERS);
+    callback([]);
     return () => {};
   }
 };

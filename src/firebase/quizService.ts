@@ -85,18 +85,19 @@ export const submitQuizArenaResult = async (
   answers: QuizArenaAnswer[],
   uid?: string
 ): Promise<ServiceResponse<QuizArenaSubmissionResult>> => {
-  // First attempt secure Cloud Function
+  const activeUid = uid || 'current-athlete';
+  const submissionId = `${activeUid}_quiz_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+  // First attempt secure Cloud Function with idempotency key
   try {
-    const data = await submitQuizArenaAnswers(answers);
+    const data = await submitQuizArenaAnswers(answers, submissionId);
     return {
       success: true,
       data,
     };
-  } catch (functionError) {
+  } catch {
     // If backend function is temporarily unreachable and user ID is available,
     // evaluate client-side safely so the athlete never loses their quiz progress
-    const activeUid = uid || 'current-athlete';
-
     try {
       const allQuestions = [...QUIZ_ARENA_QUESTIONS, ...getAllQuestionBank()];
       let score = 0;
@@ -121,6 +122,21 @@ export const submitQuizArenaResult = async (
         if (userSnap.exists()) {
           userData = userSnap.data();
           prevXP = Number(userData.xp || 0);
+
+          // Client-side duplicate check
+          if (Array.isArray(userData.processedSubmissions) && userData.processedSubmissions.includes(submissionId)) {
+            return {
+              success: true,
+              data: {
+                score,
+                percentage,
+                xpEarned: 0,
+                level: calculateLevel(prevXP),
+                totalXP: prevXP,
+                duplicate: true,
+              },
+            };
+          }
         }
       } catch (e) {
         console.warn('Firestore getDoc in submitQuizArenaResult skipped:', e);
@@ -159,6 +175,7 @@ export const submitQuizArenaResult = async (
           level,
           quizArenaScores: arrayUnion(percentage),
           recentActivity: arrayUnion(recentActivity[0]),
+          processedSubmissions: arrayUnion(submissionId),
         });
       } catch (firestoreError: any) {
         console.warn('Firestore updateDoc skipped in submitQuizArenaResult:', firestoreError?.message);
@@ -172,19 +189,14 @@ export const submitQuizArenaResult = async (
           xpEarned,
           level,
           totalXP,
+          duplicate: false,
         },
       };
-    } catch (fallbackError) {
-      console.warn('Quiz result fallback evaluated:', fallbackError);
+    } catch (fallbackError: any) {
+      console.warn('Quiz result fallback error:', fallbackError);
       return {
-        success: true,
-        data: {
-          score: answers.length,
-          percentage: 100,
-          xpEarned: 150,
-          level: 'Competitor',
-          totalXP: 150,
-        },
+        success: false,
+        error: fallbackError?.message || 'Failed to submit quiz results. Please try again.',
       };
     }
   }

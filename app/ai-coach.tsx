@@ -149,6 +149,7 @@ export default function AICoachScreen() {
       }, 400);
       return () => clearTimeout(timer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.initialQuestion]);
 
   const renderMessageItem = ({ item }: { item: AIChatMessage }) => {

@@ -98,7 +98,7 @@ export default function ProfileScreen() {
       setAge(String(Number(editAge) || 0));
       setIsEditing(false);
       Alert.alert('Success', 'Profile updated');
-    } catch (error: any) {
+    } catch {
       setName(editName.trim());
       setSport(editSport.trim());
       setAge(String(Number(editAge) || 0));

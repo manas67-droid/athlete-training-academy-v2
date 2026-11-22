@@ -15,12 +15,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AppBadge } from '../../src/components/common/AppBadge';
 import { ProgressBar } from '../../src/components/common/ProgressBar';
 import { auth } from '../../src/firebase/config';
-import { useTranslation } from '../../src/localization';
 import { getAssignedAthletes } from '../../src/services/coachService';
 import type { CoachAthleteSummary } from '../../src/types/roles';
 
 export default function CoachAthletesScreen() {
-  const { t } = useTranslation();
   const [athletes, setAthletes] = useState<CoachAthleteSummary[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);

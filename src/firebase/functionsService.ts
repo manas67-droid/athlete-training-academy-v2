@@ -15,16 +15,18 @@ export type QuizArenaSubmissionResult = {
   xpEarned: number;
   level: string;
   totalXP: number;
+  duplicate?: boolean;
 };
 
 const submitQuizArena = httpsCallable<
-  { answers: QuizArenaAnswer[] },
+  { answers: QuizArenaAnswer[]; submissionId?: string },
   QuizArenaSubmissionResult
 >(functions, 'submitQuizArena');
 
 export const submitQuizArenaAnswers = async (
-  answers: QuizArenaAnswer[]
+  answers: QuizArenaAnswer[],
+  submissionId?: string
 ): Promise<QuizArenaSubmissionResult> => {
-  const response = await submitQuizArena({ answers });
+  const response = await submitQuizArena({ answers, submissionId });
   return response.data;
 };

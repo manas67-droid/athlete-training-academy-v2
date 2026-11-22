@@ -24,6 +24,7 @@ export type AthleteLearningContext = {
 
 export type AICoachRequest = {
   message: string;
+  question?: string;
   conversationHistory?: {
     role: 'user' | 'assistant';
     content: string;
@@ -35,10 +36,14 @@ export type AICoachRequest = {
 
 export type AICoachResponse = {
   reply: string;
-  suggestedFollowUps: string[];
+  answer?: string;
+  suggestedFollowUps?: string[];
   relevantModuleSlug?: string;
-  sourceReferences: string[];
-  language: 'en' | 'hi';
+  sourceReferences?: string[];
+  citations?: string[];
+  safetyNotice?: string;
+  language?: 'en' | 'hi';
+  timestamp?: string;
 };
 
 export type AIGeneratedQuizQuestion = {

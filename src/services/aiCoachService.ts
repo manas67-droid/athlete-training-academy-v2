@@ -1,12 +1,9 @@
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app } from '../firebase/config';
 import type {
-  AIChatMessage,
   AICoachRequest,
   AICoachResponse,
-  AthleteLearningContext,
 } from '../types/ai';
-import { learningModules } from '../learning/modules';
 import { TRUSTED_MEDICINE_DATABASE } from './medicineReferenceService';
 
 const functions = getFunctions(app, 'asia-south1');
@@ -70,12 +67,33 @@ export const askAICoach = async (
       functions,
       'askAICoach'
     );
-    const result = await askCoachCallable(request);
-    if (result.data && result.data.reply) {
-      return result.data;
+    const result = await askCoachCallable({
+      ...request,
+      question: request.message,
+    });
+    if (result.data) {
+      const reply = result.data.reply || result.data.answer;
+      if (reply) {
+        return {
+          reply,
+          answer: reply,
+          suggestedFollowUps: result.data.suggestedFollowUps || [
+            isHindi ? 'TUE क्या है और इसके नियम क्या हैं?' : 'What is a Therapeutic Use Exemption (TUE)?',
+            isHindi ? 'सप्लीमेंट्स क्यों जोखिम भरे होते हैं?' : 'Why are dietary supplements high risk?',
+          ],
+          relevantModuleSlug: result.data.relevantModuleSlug || 'anti-doping-basics',
+          sourceReferences: result.data.sourceReferences || result.data.citations || [
+            'WADA World Anti-Doping Code',
+            'WADA 2026 Prohibited List',
+          ],
+          safetyNotice: result.data.safetyNotice,
+          language: request.language || 'en',
+          timestamp: result.data.timestamp || new Date().toISOString(),
+        };
+      }
     }
-  } catch (backendError) {
-    // Cloud function unavailable or API key not yet configured in production;
+  } catch {
+    // Cloud function unavailable or network timeout;
     // Fall back to authoritative AntiDopX knowledge-grounded reasoning engine
   }
 

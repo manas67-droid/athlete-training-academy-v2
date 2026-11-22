@@ -19,11 +19,10 @@ import { AppBadge } from '../../src/components/common/AppBadge';
 import { auth } from '../../src/firebase/config';
 import { useTranslation } from '../../src/localization';
 import {
-  getOrCreateConversation,
   sendChatMessage,
   subscribeToMessages,
 } from '../../src/services/chatService';
-import type { ChatMessage, Conversation } from '../../src/types/chat';
+import type { ChatMessage } from '../../src/types/chat';
 
 export default function ChatScreen() {
   const { t } = useTranslation();

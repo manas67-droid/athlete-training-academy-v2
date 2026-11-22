@@ -1,5 +1,4 @@
 import type {
-  AntiDopingStatus,
   MedicineScanResult,
   VerifiedMedicineRecord,
 } from '../types/medicine';

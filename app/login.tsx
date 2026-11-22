@@ -36,7 +36,7 @@ export default function LoginScreen() {
   const fallbackClientId = 'antidopx-client.apps.googleusercontent.com';
   const effectiveClientId = configuredClientId || fallbackClientId;
 
-  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+  const [, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: effectiveClientId,
     webClientId: effectiveClientId,
     androidClientId: effectiveClientId,
