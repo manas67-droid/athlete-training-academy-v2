@@ -4,6 +4,7 @@ import {
   signInWithCredential,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInWithPopup,
   type User,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -69,6 +70,30 @@ async function ensureProfile(user: User) {
     await updateDailyStreak(user.uid);
   } catch (err) {
     console.warn('Failed to ensure remote user profile:', err);
+  }
+}
+
+export async function signInWithGoogleWeb(): Promise<{
+  success: boolean;
+  user?: User;
+  error?: string;
+}> {
+  try {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const userCredential = await signInWithPopup(auth, provider);
+    await ensureProfile(userCredential.user);
+
+    return {
+      success: true,
+      user: userCredential.user,
+    };
+  } catch (error: any) {
+    console.error('Google Web Popup Sign-In Error:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to sign in with Google.',
+    };
   }
 }
 

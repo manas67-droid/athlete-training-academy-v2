@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -21,6 +22,7 @@ import {
   isGoogleAuthConfigured,
   signInWithDevGoogleAccount,
   signInWithGoogleCredential,
+  signInWithGoogleWeb,
 } from '../src/firebase/googleAuthservices';
 import { loginUser } from '../src/firebase/loginService';
 import { updateDailyStreak } from '../src/firebase/streakService';
@@ -114,6 +116,42 @@ export default function LoginScreen() {
   };
 
   const handleGoogleSignIn = async () => {
+    if (Platform.OS === 'web') {
+      if (isGoogleAuthConfigured()) {
+        setIsAuthenticating(true);
+        const res = await signInWithGoogleWeb();
+        setIsAuthenticating(false);
+        if (res.success) {
+          Alert.alert('Welcome!', 'Signed in with Google successfully.');
+          router.replace('/dashboard');
+          return;
+        } else if (res.error?.includes('auth/popup-closed-by-user')) {
+          return;
+        }
+      }
+
+      // On React Native Web, Alert.alert drops action buttons. Use window.confirm for web confirmation.
+      const shouldLoginDemo =
+        typeof window !== 'undefined' && typeof window.confirm === 'function'
+          ? window.confirm(
+              'Google OAuth Client ID is not yet configured in Google Cloud Console.\n\nWould you like to sign in using the AntiDopX Demo Google Athlete account to test the application?'
+            )
+          : false;
+
+      if (shouldLoginDemo) {
+        setIsAuthenticating(true);
+        const res = await signInWithDevGoogleAccount();
+        setIsAuthenticating(false);
+        if (res.success) {
+          Alert.alert('Welcome', 'Signed in as Google Athlete test account.');
+          router.replace('/dashboard');
+        } else {
+          Alert.alert('Authentication Error', res.error || 'Failed to authenticate test account.');
+        }
+      }
+      return;
+    }
+
     if (isGoogleAuthConfigured()) {
       try {
         await promptAsync();
