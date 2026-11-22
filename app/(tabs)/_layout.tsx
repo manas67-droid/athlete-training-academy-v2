@@ -35,7 +35,7 @@ export default function TabLayout() {
         options={{
           title: "Dashboard",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" color={color} size={size} />
+            <Ionicons name="home" color={String(color || '#06B6D4')} size={size} />
           ),
         }}
       />
@@ -45,7 +45,7 @@ export default function TabLayout() {
         options={{
           title: "Learn",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book" color={color} size={size} />
+            <Ionicons name="book" color={String(color || '#06B6D4')} size={size} />
           ),
         }}
       />
@@ -109,7 +109,7 @@ export default function TabLayout() {
         options={{
           title: "Ranks",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="trophy" color={color} size={size} />
+            <Ionicons name="trophy" color={String(color || '#06B6D4')} size={size} />
           ),
         }}
       />
@@ -119,7 +119,7 @@ export default function TabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" color={color} size={size} />
+            <Ionicons name="person" color={String(color || '#06B6D4')} size={size} />
           ),
         }}
       />

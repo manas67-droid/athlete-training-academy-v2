@@ -17,6 +17,7 @@ import { AppBadge } from '../src/components/common/AppBadge';
 import { AppButton } from '../src/components/common/AppButton';
 import { ProgressBar } from '../src/components/common/ProgressBar';
 import { auth } from '../src/firebase/config';
+import { getUserProfile } from '../src/firebase/userService';
 import {
   getDynamicQuizSession,
   submitQuizArenaResult,
@@ -88,6 +89,34 @@ export default function QuizScreen() {
     },
     [idx, questions.length, persistQuizResult, session.timeLimitSeconds]
   );
+
+  // Load athlete's XP and adapt quiz questions dynamically
+  useEffect(() => {
+    let isMounted = true;
+    const loadAdaptiveQuiz = async () => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const profileRes = await getUserProfile(currentUser.uid);
+      if (profileRes.success && profileRes.data && isMounted) {
+        const user = profileRes.data;
+        const adaptiveSession = getDynamicQuizSession(
+          { mode: 'rapid_fire', targetQuestionCount: 5 },
+          (user.quizScores as Record<string, number>) || {},
+          user.xp || 0,
+          user.sport
+        );
+        setSession(adaptiveSession);
+        setQuestions(adaptiveSession.questions);
+        setTime(adaptiveSession.timeLimitSeconds);
+      }
+    };
+
+    void loadAdaptiveQuiz();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Timer countdown
   useEffect(() => {

@@ -76,9 +76,11 @@ export const getQuizArenaQuestions = (): QuizArenaQuestion[] =>
 
 export const getDynamicQuizSession = (
   config: AdaptiveQuizConfig = { mode: 'rapid_fire' },
-  quizScores: Record<string, number> = {}
+  quizScores: Record<string, number> = {},
+  userXP: number = 0,
+  userSport?: string
 ): AdaptiveQuizSession => {
-  return generateAdaptiveQuizSession(quizScores, config);
+  return generateAdaptiveQuizSession(quizScores, config, userXP, userSport);
 };
 
 export const submitQuizArenaResult = async (

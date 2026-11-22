@@ -15,11 +15,48 @@ type QuizAnswer = {
 };
 
 const quizAnswers: Record<string, number> = {
+  // Legacy
   'arena-1': 1,
   'arena-2': 1,
   'arena-3': 1,
   'arena-4': 2,
   'arena-5': 1,
+  // Rookie Tier (< 100 XP)
+  'rookie-1': 1,
+  'rookie-2': 1,
+  'rookie-3': 2,
+  'rookie-4': 0,
+  'rookie-5': 1,
+  'rookie-6': 0,
+  'rookie-7': 1,
+  'rookie-8': 1,
+  // Competitor Tier (100 - 299 XP)
+  'comp-1': 1,
+  'comp-2': 1,
+  'comp-3': 1,
+  'comp-4': 1,
+  'comp-5': 1,
+  'comp-6': 1,
+  'comp-7': 0,
+  'comp-8': 1,
+  // Champion Tier (300 - 999 XP)
+  'champ-1': 0,
+  'champ-2': 2,
+  'champ-3': 1,
+  'champ-4': 1,
+  'champ-5': 2,
+  'champ-6': 1,
+  'champ-7': 2,
+  'champ-8': 1,
+  // Elite Tier (1000+ XP)
+  'elite-1': 1,
+  'elite-2': 1,
+  'elite-3': 1,
+  'elite-4': 1,
+  'elite-5': 1,
+  'elite-6': 2,
+  'elite-7': 1,
+  'elite-8': 1,
 };
 
 const getLevel = (xp: number): string => {
@@ -271,25 +308,72 @@ export const askAICoach = onCall({ region: REGION }, async (request: CallableReq
   let answer = '';
   const citations: string[] = ['WADA World Anti-Doping Code', 'WADA 2026 Prohibited List'];
 
-  if (clean.includes('tue') || clean.includes('exemption') || clean.includes('उपचार संबंधी')) {
-    answer = isHindi
-      ? 'टीयूई (चिकित्सीय उपयोग छूट) एक आधिकारिक अनुमति है जो एथलीट को वैध चिकित्सा कारणों से प्रतिबंधित पदार्थ या विधि का उपयोग करने की अनुमति देती है। इसे हमेशा प्रतियोगिता से पहले अपने राष्ट्रीय डोपिंग रोधी संगठन (NADO) से स्वीकृत कराना आवश्यक है।'
-      : 'A TUE (Therapeutic Use Exemption) grants an athlete official medical authorization to use a prohibited substance or method for a legitimate medical condition. You must apply and obtain approval through your NADO or International Federation before participating in competition.';
-    citations.push('International Standard for Therapeutic Use Exemptions (ISTUE)');
-  } else if (clean.includes('strict liability') || clean.includes('जिम्मेदारी')) {
-    answer = isHindi
-      ? 'सख्त दायित्व (Strict Liability) का नियम कहता है कि एक एथलीट अपने शरीर में पाए जाने वाले किसी भी पदार्थ के लिए पूरी तरह व्यक्तिगत रूप से जिम्मेदार है। अनजाने में लिया गया पदार्थ भी डोपिंग उल्लंघन माना जा सकता है।'
-      : 'Strict Liability means that as an athlete, you are solely and personally responsible for any substance found in your sample. Intent or negligence does not excuse an Anti-Doping Rule Violation.';
-    citations.push('WADA Code Article 2.1');
-  } else if (clean.includes('supplement') || clean.includes('protein') || clean.includes('सप्लीमेंट')) {
-    answer = isHindi
-      ? 'आहार सप्लीमेंट्स में क्रॉस-संदूषण (Contamination) और अघोषित प्रतिबंधित पदार्थों का अत्यधिक जोखिम होता है। वाडा कभी भी किसी भी सप्लीमेंट को प्रमाणित नहीं करता है। केवल स्वतंत्र रूप से बैच-परीक्षण (Informed Sport / NSF) उत्पादों का ही चयन करें।'
-      : 'Dietary supplements carry a high risk of cross-contamination and undeclared banned stimulants. WADA does NOT certify any dietary supplement. Look for third-party batch-tested products (Informed Sport / NSF) and consult your sports physician.';
-    citations.push('WADA Guidelines on Dietary Supplements & Contamination');
-  } else {
-    answer = isHindi
-      ? 'डोपिंग-रोधी नियम आपके स्वास्थ्य और खेल की निष्पक्षता की रक्षा के लिए बनाए गए हैं। हमेशा किसी भी दवा या पूरक आहार का उपयोग करने से पहले ग्लोबल डीआरओ (Global DRO) या अपने खेल चिकित्सक से पुष्टि करें।'
-      : 'Clean sport protects your health and fairness in athletic competition. Always verify your medications and active ingredients with Global DRO or your team physician before consumption.';
+  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.AI_COACH_API_KEY;
+  if (geminiApiKey && !geminiApiKey.includes('placeholder')) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+      const systemPrompt = `You are AntiDopX AI, an elite Anti-Doping Education specialist certified in the World Anti-Doping Code and WADA 2026 Prohibited List.
+Respond in ${isHindi ? 'Hindi' : 'English'}.
+Strictly adhere to:
+1. Always remind the athlete that Strict Liability applies: they are 100% accountable for what is inside their body.
+2. Ground all answers in official WADA Prohibited List classes (S0-S9, M1-M3, P1) and ISTUE rules.
+3. Advise on TUE requirements, supplement risks, and in-competition vs out-of-competition rules.
+4. Include a brief educational safety disclaimer.`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: rawQuestion }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 600 },
+        }),
+      });
+
+      if (response.ok) {
+        const json: any = await response.json();
+        const geminiText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (geminiText) {
+          answer = geminiText;
+          citations.push('Google Gemini Anti-Doping Intelligence Engine');
+        }
+      }
+    } catch (apiErr) {
+      logger.warn('Gemini API call failed, using grounded WADA engine fallback', apiErr);
+    }
+  }
+
+  if (!answer) {
+    if (clean.includes('tramadol')) {
+      answer = isHindi
+        ? 'ट्रामाडोल (Tramadol) को जनवरी 2024 से WADA द्वारा प्रतियोगिता के दौरान (In-Competition) S7 नारकोटिक्स वर्ग के तहत पूरी तरह प्रतिबंधित कर दिया गया है। इसके उपयोग से गंभीर निर्भरता और स्वास्थ्य जोखिम हो सकते हैं।'
+        : 'Tramadol is strictly prohibited In-Competition under WADA Class S7 (Narcotics). If needed for acute clinical pain management outside competition, ensure an adequate washout period or an approved advance TUE.';
+      citations.push('WADA 2026 Prohibited List Class S7 (Narcotics)');
+    } else if (clean.includes('tue') || clean.includes('exemption') || clean.includes('उपचार संबंधी')) {
+      answer = isHindi
+        ? 'टीयूई (चिकित्सीय उपयोग छूट) एक आधिकारिक अनुमति है जो एथलीट को वैध चिकित्सा कारणों से प्रतिबंधित पदार्थ या विधि का उपयोग करने की अनुमति देती है। इसे हमेशा प्रतियोगिता से पहले अपने राष्ट्रीय डोपिंग रोधी संगठन (NADO) से स्वीकृत कराना आवश्यक है।'
+        : 'A TUE (Therapeutic Use Exemption) grants an athlete official medical authorization to use a prohibited substance or method for a legitimate medical condition. You must apply and obtain approval through your NADO or International Federation before participating in competition.';
+      citations.push('International Standard for Therapeutic Use Exemptions (ISTUE)');
+    } else if (clean.includes('strict liability') || clean.includes('जिम्मेदारी')) {
+      answer = isHindi
+        ? 'सख्त दायित्व (Strict Liability) का नियम कहता है कि एक एथलीट अपने शरीर में पाए जाने वाले किसी भी पदार्थ के लिए पूरी तरह व्यक्तिगत रूप से जिम्मेदार है। अनजाने में लिया गया पदार्थ भी डोपिंग उल्लंघन माना जा सकता है।'
+        : 'Strict Liability means that as an athlete, you are solely and personally responsible for any substance found in your sample. Intent or negligence does not excuse an Anti-Doping Rule Violation.';
+      citations.push('WADA Code Article 2.1');
+    } else if (clean.includes('supplement') || clean.includes('protein') || clean.includes('सप्लीमेंट')) {
+      answer = isHindi
+        ? 'आहार सप्लीमेंट्स में क्रॉस-संदूषण (Contamination) और अघोषित प्रतिबंधित पदार्थों का अत्यधिक जोखिम होता है। वाडा कभी भी किसी भी सप्लीमेंट को प्रमाणित नहीं करता है। केवल स्वतंत्र रूप से बैच-परीक्षण (Informed Sport / NSF) उत्पादों का ही चयन करें।'
+        : 'Dietary supplements carry a high risk of cross-contamination and undeclared banned stimulants. WADA does NOT certify any dietary supplement. Look for third-party batch-tested products (Informed Sport / NSF) and consult your sports physician.';
+      citations.push('WADA Guidelines on Dietary Supplements & Contamination');
+    } else if (clean.includes('steroid') || clean.includes('sarm') || clean.includes('स्टेरॉयड')) {
+      answer = isHindi
+        ? 'एनाबॉलिक स्टेरॉयड (S1) और SARMs (जैसे Ostarine, Ligandrol) हर समय (प्रतियोगिता के दौरान और बाहर दोनों) पूरी तरह प्रतिबंधित हैं। इसका उल्लंघन 4 वर्ष के प्रतिबंध का कारण बन सकता है।'
+        : 'Anabolic agents (Class S1) including steroids and SARMs are prohibited at all times (both in- and out-of-competition) and carry standard 4-year periods of ineligibility under WADA Code Article 10.2.';
+      citations.push('WADA 2026 Prohibited List Class S1 (Anabolic Agents)');
+    } else {
+      answer = isHindi
+        ? 'डोपिंग-रोधी नियम आपके स्वास्थ्य और खेल की निष्पक्षता की रक्षा के लिए बनाए गए हैं। हमेशा किसी भी दवा या पूरक आहार का उपयोग करने से पहले ग्लोबल डीआरओ (Global DRO) या अपने खेल चिकित्सक से पुष्टि करें।'
+        : 'Clean sport protects your health and fairness in athletic competition. Always verify your medications and active ingredients with Global DRO or your team physician before consumption.';
+    }
   }
 
   const safetyNotice = isHindi

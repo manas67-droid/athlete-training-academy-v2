@@ -30,7 +30,7 @@ test('Adaptive Quiz Engine - Session Generation', async (t) => {
   await t.test('generates rapid_fire session with requested question count', () => {
     const session = generateAdaptiveQuizSession({}, { mode: 'rapid_fire', targetQuestionCount: 5 });
     assert.strictEqual(session.questions.length, 5);
-    assert.strictEqual(session.title, 'Rapid-Fire Quiz Arena');
+    assert.ok(session.title.includes('Quiz Arena'), 'Session title should include Quiz Arena');
     assert.ok(session.timeLimitSeconds > 0);
     assert.ok(session.possibleXP > 0);
   });
@@ -46,7 +46,7 @@ test('Adaptive Quiz Engine - Session Generation', async (t) => {
       targetQuestionCount: 5,
     });
 
-    assert.strictEqual(session.title, 'Adaptive Revision Challenge');
+    assert.ok(session.title.includes('Revision Arena'), 'Session title should include Revision Arena');
     assert.ok(session.targetTopics.includes('tue'), 'Adaptive revision session should target weak topic tue');
     assert.strictEqual(session.questions.length, 5);
   });
@@ -63,3 +63,46 @@ test('Adaptive Quiz Engine - Session Generation', async (t) => {
     assert.ok(session.questions.length <= 2);
   });
 });
+
+test('Adaptive Quiz Engine - XP-Based Difficulty & Progression', async (t) => {
+  await t.test('calculates correct XP tiers for athletes', () => {
+    const { getXPTier } = require('../src/services/adaptiveQuizService');
+    assert.strictEqual(getXPTier(0), 'ROOKIE');
+    assert.strictEqual(getXPTier(95), 'ROOKIE');
+    assert.strictEqual(getXPTier(100), 'COMPETITOR');
+    assert.strictEqual(getXPTier(280), 'COMPETITOR');
+    assert.strictEqual(getXPTier(300), 'CHAMPION');
+    assert.strictEqual(getXPTier(850), 'CHAMPION');
+    assert.strictEqual(getXPTier(1000), 'ELITE');
+    assert.strictEqual(getXPTier(2500), 'ELITE');
+  });
+
+  await t.test('generates questions tailored to Rookie tier (< 100 XP)', () => {
+    const rookieSession = generateAdaptiveQuizSession({}, { mode: 'rapid_fire', targetQuestionCount: 5 }, 50);
+    assert.strictEqual(rookieSession.tier, 'ROOKIE');
+    assert.strictEqual(rookieSession.title, 'Rookie Quiz Arena');
+    assert.strictEqual(rookieSession.questions.length, 5);
+    // Should prioritize rookie questions
+    const hasRookieQs = rookieSession.questions.some((q) => q.id.startsWith('rookie') || q.id.startsWith('arena'));
+    assert.ok(hasRookieQs, 'Rookie session should contain foundational rookie questions');
+  });
+
+  await t.test('generates questions tailored to Champion tier (300 - 999 XP)', () => {
+    const champSession = generateAdaptiveQuizSession({}, { mode: 'rapid_fire', targetQuestionCount: 5 }, 500);
+    assert.strictEqual(champSession.tier, 'CHAMPION');
+    assert.strictEqual(champSession.title, 'Champion Quiz Arena');
+    assert.strictEqual(champSession.questions.length, 5);
+    const hasChampQs = champSession.questions.some((q) => q.id.startsWith('champ') || q.id.startsWith('arena-4'));
+    assert.ok(hasChampQs, 'Champion session should contain advanced champion questions');
+  });
+
+  await t.test('generates questions tailored to Elite tier (1000+ XP)', () => {
+    const eliteSession = generateAdaptiveQuizSession({}, { mode: 'rapid_fire', targetQuestionCount: 5 }, 1200);
+    assert.strictEqual(eliteSession.tier, 'ELITE');
+    assert.strictEqual(eliteSession.title, 'Elite Pro Quiz Arena');
+    assert.strictEqual(eliteSession.questions.length, 5);
+    const hasEliteQs = eliteSession.questions.some((q) => q.id.startsWith('elite'));
+    assert.ok(hasEliteQs, 'Elite session should contain high-stakes elite questions');
+  });
+});
+
