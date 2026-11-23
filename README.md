@@ -180,9 +180,13 @@ When building and testing this repository:
 
 ---
 
-## 10. Author & Developer
+## 10. Team & Contributors
 
 - **Creator & Lead Developer:** **Manas Motla**
+- **Contributors:**
+  - **Manish Yadav**
+  - **Krish Chaudhary**
+  - **Harshom Gupta**
 - **Project:** AntiDopX — Youth Athlete Anti-Doping Education & Mentorship Platform
 - **Architecture:** Full-Stack Architecture, UI/UX Design System, Cloud Firestore Backend, Admin Panel, and Grounded AI Engine
 

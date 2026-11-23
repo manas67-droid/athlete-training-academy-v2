@@ -19,8 +19,15 @@ export function getGoogleWebClientId(): string | null {
   const extraId = Constants.expoConfig?.extra?.webClientId;
   const envId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
-  const candidate = envId || extraId;
-  if (!candidate || candidate.includes('YOUR_WEB_CLIENT_ID')) {
+  const candidate = (envId || extraId || '').trim();
+  if (
+    !candidate ||
+    candidate.toLowerCase().includes('your_web_client_id') ||
+    candidate.toLowerCase().includes('your-google-oauth-client-id') ||
+    candidate.toLowerCase().includes('placeholder') ||
+    candidate.toLowerCase().includes('antidopx-client') ||
+    !/^\d+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(candidate)
+  ) {
     return null;
   }
   return candidate;
